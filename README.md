@@ -84,11 +84,12 @@ Full Name,Title,Org,LinkedIn URL,Promotion or Job Change,Job Openings,HubSpot Ow
 
 ## Google Workspace access (for OpenClaw)
 
-When running on OpenClaw, blade reads Clay's spreadsheet exports out of a
-shared Drive folder via the `gws` CLI
-(<https://github.com/googleworkspace/cli>). One-time setup:
+When running on OpenClaw, blade reads Clay's spreadsheet exports straight from
+the Sheets API using a Google service account. One-time setup:
 
-1. **GCP project** — pick or create one and enable the Drive and Sheets APIs:
+1. **GCP project** — pick or create one and enable the Drive and Sheets APIs
+   (Drive lets `gws`-style folder browsing work; Sheets is what blade itself
+   calls):
    ```bash
    gcloud services enable drive.googleapis.com sheets.googleapis.com
    ```
@@ -104,23 +105,32 @@ shared Drive folder via the `gws` CLI
    ID is the path segment after `/folders/` in the share URL.
 4. **Drop the key on OpenClaw** at `~/.config/blade/service-account.json`
    (mode 600). `service-account.json` is already gitignored.
-5. **Run the setup script** on the OpenClaw instance:
+5. **Point blade at it.** Set on the OpenClaw box (e.g. in `~/.bashrc`):
    ```bash
-   export CLAY_DRIVE_FOLDER_ID=<folder-id>
-   ./setup-gws.sh
+   export GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/blade/service-account.json
+   export CLAY_SHEET_ID=<the sheet's file ID>
    ```
-   It installs `gws`, exports `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE`, and
-   lists the folder to confirm access.
+   Then `python blade.py --dry-run` should preview alerts off the live Sheet.
 
-After that, blade can read sheets headlessly, e.g.:
+Scopes: blade only requests `spreadsheets.readonly` against the one shared
+sheet — no domain-wide delegation, no admin consent.
+
+### Optional: gws CLI for ad-hoc folder browsing
+
+[`googleworkspace/cli`](https://github.com/googleworkspace/cli) (`gws`) is
+handy for poking at the Drive folder from the shell — listing files, finding
+sheet IDs. **It is not required for blade.py to run.** `setup-gws.sh` installs
+it and confirms the SA can see the folder:
 
 ```bash
-gws drive files list --params "{\"q\": \"'$CLAY_DRIVE_FOLDER_ID' in parents\"}"
-gws sheets spreadsheets values get --params '{"spreadsheetId": "<id>", "range": "Sheet1!A:Z"}'
+export CLAY_DRIVE_FOLDER_ID=<folder-id>
+./setup-gws.sh
 ```
 
-Scopes: the service account only needs read access to the one shared folder —
-no domain-wide delegation, no admin consent.
+Note: the npm-distributed `gws` binary is built against glibc 2.39, so it
+won't run on older Linux distros. If you hit `GLIBC_2.39 not found`, install
+via `cargo install --git https://github.com/googleworkspace/cli --locked`
+instead, or skip `gws` entirely — blade doesn't need it.
 
 ## Clay API note
 

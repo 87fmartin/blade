@@ -14,8 +14,6 @@ import argparse
 import csv
 import json
 import os
-import shutil
-import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -23,6 +21,8 @@ from pathlib import Path
 from typing import Iterable
 
 import requests
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 
 
 # === Column names — remap here if your Clay table uses different headers ===
@@ -98,24 +98,26 @@ def load_clay(api_key: str, table_id: str) -> list[Prospect]:
     return _parse_rows(rows)
 
 
-def load_gsheet(spreadsheet_id: str, range_str: str = "Sheet1") -> list[Prospect]:
-    """Fetch rows from a Google Sheet via the `gws` CLI.
+SHEETS_READONLY_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly"
 
-    Auth comes from GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE (set by setup-gws.sh).
-    The first row of `range_str` is treated as the header row.
+
+def load_gsheet(spreadsheet_id: str, range_str: str, creds_path: str) -> list[Prospect]:
+    """Fetch rows from a Google Sheet via the Sheets API.
+
+    `creds_path` points to a service-account JSON key. The first row of
+    `range_str` is treated as the header row.
     """
-    if shutil.which("gws") is None:
-        raise RuntimeError("gws not on PATH — run setup-gws.sh on this host first")
-    params = json.dumps({"spreadsheetId": spreadsheet_id, "range": range_str})
-    result = subprocess.run(
-        ["gws", "sheets", "spreadsheets", "values", "get", "--params", params],
-        capture_output=True,
-        text=True,
+    creds = service_account.Credentials.from_service_account_file(
+        creds_path, scopes=[SHEETS_READONLY_SCOPE]
     )
-    if result.returncode != 0:
-        raise RuntimeError(f"gws failed ({result.returncode}): {result.stderr.strip()}")
-    payload = json.loads(result.stdout)
-    values = payload.get("values") or []
+    service = build("sheets", "v4", credentials=creds, cache_discovery=False)
+    result = (
+        service.spreadsheets()
+        .values()
+        .get(spreadsheetId=spreadsheet_id, range=range_str)
+        .execute()
+    )
+    values = result.get("values") or []
     if len(values) < 2:
         return []
     headers, *rows = values
@@ -284,7 +286,14 @@ def main() -> None:
     if args.csv:
         prospects = load_csv(Path(args.csv))
     elif sheet_id:
-        prospects = load_gsheet(sheet_id, args.sheet_range)
+        creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") or os.environ.get(
+            "GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE"
+        )
+        if not creds_path:
+            sys.exit(
+                "set GOOGLE_APPLICATION_CREDENTIALS to the service-account JSON path"
+            )
+        prospects = load_gsheet(sheet_id, args.sheet_range, creds_path)
     else:
         api_key = os.environ.get("CLAY_API_KEY")
         table_id = os.environ.get("CLAY_TABLE_ID")

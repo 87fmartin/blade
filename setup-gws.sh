@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Install Google Workspace CLI (gws) and verify the blade agent can read the
-# Drive folder that Clay exports spreadsheets into.
+# OPTIONAL: install Google Workspace CLI (gws) and verify the service account
+# can read the Drive folder that Clay exports spreadsheets into. blade.py
+# itself talks to the Sheets API directly via google-api-python-client and
+# does NOT need gws — this script is just a convenience for ad-hoc folder
+# browsing from the shell.
 #
 # Required env vars:
 #   GWS_CREDENTIALS_FILE     Path to the service-account JSON key.
@@ -8,7 +11,10 @@
 #   CLAY_DRIVE_FOLDER_ID     The Drive folder ID (the part after /folders/ in
 #                            the share URL).
 #
-# Run on the OpenClaw instance after dropping the service-account JSON in place.
+# Heads-up: the npm-distributed gws binary is built against glibc 2.39 and
+# fails to run on older Linux distros (e.g. Ubuntu 22.04). If you hit
+# `GLIBC_2.39 not found`, build from source: `cargo install --git
+# https://github.com/googleworkspace/cli --locked`.
 set -euo pipefail
 
 CREDS="${GWS_CREDENTIALS_FILE:-$HOME/.config/blade/service-account.json}"
