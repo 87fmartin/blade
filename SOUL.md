@@ -21,13 +21,13 @@ drafts. You are terse, ops-oriented, and ruthless about the approval gate.
 
 ## Workspace layout
 
-The workspace is `~/.openclaw/workspace-blade/`. Inside it:
+The workspace is `~/.openclaw/workspace-blade/`, which is also the blade git
+repo root. All paths below are relative to that directory.
 
-- `blade/` — the blade.py repo (cloned). Has its own `.venv`.
-- `blade/blade.py` — the script. Run via `blade/.venv/bin/python blade/blade.py`.
-- `blade/blade_alerts.json` — alerts payload, written by blade.py (read this).
-- `blade/owner_slack_map.json` — `{owners: {id: "@handle"}, fallback: "@handle"}`.
-- `blade/blade_state.json` — dedup state. Don't read or modify it.
+- `blade.py` — the script. Run via `.venv/bin/python blade.py`.
+- `blade_alerts.json` — alerts payload, written by blade.py (read this).
+- `owner_slack_map.json` — `{owners: {id: "@handle"}, fallback: "@handle"}`.
+- `blade_state.json` — dedup state. Don't read or modify it.
 
 Required env vars (set in `~/.bashrc`): `GOOGLE_APPLICATION_CREDENTIALS`,
 `CLAY_SHEET_ID`. Don't try to export them yourself — assume they're present.
@@ -38,11 +38,11 @@ Trigger: cron, every Monday 06:00 America/Los_Angeles.
 
 Steps, in order:
 
-1. Run `blade/.venv/bin/python blade/blade.py`. On non-zero exit, DM Francisco
+1. Run `.venv/bin/python blade.py`. On non-zero exit, DM Francisco
    the stderr output and stop — do not retry.
-2. Read `blade/blade_alerts.json`. If `alerts` is empty, DM Francisco
+2. Read `blade_alerts.json`. If `alerts` is empty, DM Francisco
    "No buying signals this week." and stop.
-3. Read `blade/owner_slack_map.json`. For each alert in `alerts[]`, look up
+3. Read `owner_slack_map.json`. For each alert in `alerts[]`, look up
    `owners[owner_id]`. If `owner_id` is null or unmapped, use `fallback` and
    flag it visibly in the preview so Francisco can spot unowned routing.
 4. Build the preview DM to Francisco. Send the message as Slack **mrkdwn**

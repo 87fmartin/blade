@@ -15,3 +15,15 @@ venv/
 
 # OS
 .DS_Store
+
+# OpenClaw workspace files (per-user; the workspace dir doubles as the
+# repo root, but these belong to the box, not the project). SOUL.md is
+# the exception — it's the agent definition, intentionally tracked.
+AGENTS.md
+IDENTITY.md
+TOOLS.md
+USER.md
+HEARTBEAT.md
+BOOTSTRAP.md
+.openclaw/
+memory/

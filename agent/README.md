@@ -5,9 +5,10 @@ prospects with buying signals, and delivers them after Francisco approves.
 
 ## Files
 
-- `SOUL.md` — agent identity, responsibilities, and the standing order that
-  drives the weekly workflow. This is the only bootstrap file the agent
-  needs; OpenClaw injects it into context every session.
+- `../SOUL.md` (top-level) — agent identity, responsibilities, and the
+  standing order that drives the weekly workflow. OpenClaw injects it into
+  context every session. Lives at the repo root because the repo IS the
+  workspace.
 - `openclaw.json.example` — Slack channel config snippet. Merge into the
   global OpenClaw config.
 
@@ -16,27 +17,21 @@ prospects with buying signals, and delivers them after Francisco approves.
 This agent is a layer on top of `blade.py`, so the blade script must already
 work end-to-end on this OpenClaw instance:
 
-- Repo cloned at `~/.openclaw/workspace-blade/blade/`
-- Python venv at `~/.openclaw/workspace-blade/blade/.venv/` with
+- Repo cloned **as the workspace itself** at `~/.openclaw/workspace-blade/`
+  (not as a subdirectory of it)
+- Python venv at `~/.openclaw/workspace-blade/.venv/` with
   `pip install -r requirements.txt` already run
 - Service-account JSON at `~/.config/blade/service-account.json` (mode 600)
 - `~/.bashrc` exports `GOOGLE_APPLICATION_CREDENTIALS` and `CLAY_SHEET_ID`
-- `python blade/blade.py --dry-run` produces a sane preview
-- `blade/owner_slack_map.json` reflects the current owner→handle mapping
+- `python blade.py --dry-run` produces a sane preview
+- `owner_slack_map.json` reflects the current owner→handle mapping
 
 If any of those isn't true, fix it before installing the agent — see the
 top-level `../README.md`.
 
 ## Install
 
-**1. Drop SOUL.md into the workspace:**
-
-```bash
-cp ~/.openclaw/workspace-blade/blade/agent/SOUL.md \
-   ~/.openclaw/workspace-blade/SOUL.md
-```
-
-**2. Register the agent (one-time):**
+**1. Register the agent (one-time):**
 
 ```bash
 openclaw agents add blade \
@@ -45,21 +40,20 @@ openclaw agents add blade \
   --model opus
 ```
 
-**3. Wire up Slack.** Find the Slack channel ID for `#sales-signals` (right-
+SOUL.md is already at the workspace root (it's tracked in the repo). No
+`cp` step needed.
+
+**2. Wire up Slack.** Find the Slack channel ID for `#sales-signals` (right-
 click the channel in Slack → Copy link; the `C...` chunk at the end is the
 ID) and your own Slack user ID (your profile → ⋯ → Copy member ID). Open
 `~/.openclaw/openclaw.json` and merge in the contents of
 `openclaw.json.example`, replacing `C__SALES_SIGNALS_ID__` and
 `U__FRANCISCO_ID__` with the real values.
 
-Then export the Slack tokens (or add to `~/.bashrc`):
+Slack tokens (`SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`) are expected to be
+exported globally already.
 
-```bash
-export SLACK_BOT_TOKEN=xoxb-...      # bot token from your Slack app
-export SLACK_APP_TOKEN=xapp-...      # app-level token, scope: connections:write
-```
-
-**4. Schedule the weekly run:**
+**3. Schedule the weekly run:**
 
 ```bash
 openclaw cron add \
@@ -87,14 +81,9 @@ actually posting anything.
 
 ## Updating the agent
 
-When you change `SOUL.md` in this repo, copy it back into the workspace:
-
-```bash
-cp agent/SOUL.md ~/.openclaw/workspace-blade/SOUL.md
-```
-
-The next session picks up the change automatically — no agent re-registration
-needed.
+`git pull` in `~/.openclaw/workspace-blade/`. Because the repo IS the
+workspace, the next session picks up SOUL.md changes automatically — no
+copy, no agent re-registration.
 
 ## Operational notes
 
