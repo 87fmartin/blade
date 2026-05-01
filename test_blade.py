@@ -11,11 +11,10 @@ from blade import (
     Prospect,
     _normalize_linkedin,
     _parse_rows,
+    build_alert_text,
     build_alerts_payload,
     build_digest,
-    build_dm,
     record_alert,
-    resolve_slack_handle,
     should_alert,
     state_key,
 )
@@ -207,26 +206,10 @@ class TestRecordAlert:
         assert "alerted_at" in entry
 
 
-# ---------- owner → Slack handle ----------
-
-
-class TestResolveSlackHandle:
-    def test_mapped_owner(self):
-        # Pick any populated mapping entry from config.
-        owner_id, handle = next(iter(blade.OWNER_TO_SLACK.items()))
-        assert resolve_slack_handle(owner_id) == handle
-
-    def test_unmapped_falls_back(self):
-        assert resolve_slack_handle("000nonexistent") == blade.FALLBACK_SLACK_HANDLE
-
-    def test_empty_falls_back(self):
-        assert resolve_slack_handle("") == blade.FALLBACK_SLACK_HANDLE
-
-
 # ---------- message + payload shape ----------
 
 
-class TestBuildDm:
+class TestBuildAlertText:
     def test_includes_all_fields(self):
         p = make(
             name="Alice",
@@ -236,7 +219,7 @@ class TestBuildDm:
             change="Promotion",
             openings=10,
         )
-        msg = build_dm(p)
+        msg = build_alert_text(p)
         assert "Priority 1" in msg
         assert "Alice" in msg
         assert "VP Eng" in msg
@@ -247,13 +230,13 @@ class TestBuildDm:
         assert "https://l/alice" in msg
 
     def test_distinguishes_promotion_vs_job_change_in_text(self):
-        promo = build_dm(make(change="Promotion"))
-        change = build_dm(make(change="Job Change"))
+        promo = build_alert_text(make(change="Promotion"))
+        change = build_alert_text(make(change="Job Change"))
         assert "Promotion" in promo and "Job change" not in promo
         assert "Job change" in change and "Promotion" not in change
 
     def test_omits_linkedin_line_when_missing(self):
-        msg = build_dm(make(linkedin="", change="Promotion"))
+        msg = build_alert_text(make(linkedin="", change="Promotion"))
         assert "LinkedIn" not in msg
 
 
@@ -282,32 +265,28 @@ class TestBuildDigest:
 
 class TestBuildAlertsPayload:
     def test_full_payload_shape(self):
-        # Use a real owner_id from config so handle resolution exercises the dict.
-        owner_id, handle = next(iter(blade.OWNER_TO_SLACK.items()))
-        p = make(change="Promotion", openings=10, owner=owner_id)
+        p = make(change="Promotion", openings=10, owner="111")
         payload = build_alerts_payload([p])
 
         assert "run_at" in payload
-        assert payload["digest"]["channel"] == "#sales-signals"
-        assert "1 signal fired" in payload["digest"]["text"]
+        assert "1 signal fired" in payload["digest"]
 
-        [dm] = payload["dms"]
-        assert dm["to"] == handle
-        assert dm["owner_id"] == owner_id
-        assert dm["prospect"] == "Alice"
-        assert dm["priority"] == 1
-        assert "Alice" in dm["text"]
+        [alert] = payload["alerts"]
+        assert "to" not in alert
+        assert alert["owner_id"] == "111"
+        assert alert["prospect"] == "Alice"
+        assert alert["priority"] == 1
+        assert "Alice" in alert["text"]
 
     def test_empty_input_omits_digest(self):
         payload = build_alerts_payload([])
-        assert payload["dms"] == []
+        assert payload["alerts"] == []
         assert "digest" not in payload
 
-    def test_unowned_prospect_routes_to_fallback(self):
+    def test_unowned_prospect_owner_id_is_none(self):
         p = make(change="Promotion", owner="")
         payload = build_alerts_payload([p])
-        assert payload["dms"][0]["to"] == blade.FALLBACK_SLACK_HANDLE
-        assert payload["dms"][0]["owner_id"] is None
+        assert payload["alerts"][0]["owner_id"] is None
 
     def test_serializes_to_json(self):
         # Sanity check: payload must be JSON-serializable (no datetimes, etc).
@@ -320,11 +299,10 @@ class TestBuildAlertsPayload:
 
 class TestCsvEndToEnd:
     def test_csv_to_payload(self, tmp_path):
-        owner_id, handle = next(iter(blade.OWNER_TO_SLACK.items()))
         csv_path = tmp_path / "p.csv"
         csv_path.write_text(
             "Full Name,Title,Org,LinkedIn URL,Promotion or Job Change,Job Openings,HubSpot Owner ID\n"
-            f"Alice,VP,Acme,linkedin.com/in/alice,Promotion,10,{owner_id}\n"
+            "Alice,VP,Acme,linkedin.com/in/alice,Promotion,10,111\n"
             "Bob,IC,Beta,linkedin.com/in/bob,,2,\n"
             "Carol,Eng,Gamma,linkedin.com/in/carol,,8,\n"
         )
@@ -340,7 +318,7 @@ class TestCsvEndToEnd:
 
     def test_dedup_across_two_runs(self):
         # Same data twice → second run produces no alerts.
-        prospects = [make(change="Promotion", openings=10, owner="11721652")]
+        prospects = [make(change="Promotion", openings=10, owner="111")]
         state: dict = {}
         first = [p for p in prospects if should_alert(p, state)]
         assert len(first) == 1

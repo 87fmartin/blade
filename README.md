@@ -1,8 +1,9 @@
 # blade
 
 Detects buying signals in a Clay table of sales prospects and emits a JSON
-file of draft Slack alerts (DMs + channel digest) for an external Slack
-posting agent (e.g. OpenClaw) to deliver.
+file of per-owner alert drafts plus a digest summary, for an external agent
+(e.g. OpenClaw) to deliver. Delivery routing — Slack handles, channels,
+email, etc. — lives in the agent, not here.
 
 ## Signals
 
@@ -23,12 +24,12 @@ Prospects with no signal are skipped.
 ## Outputs
 
 1. **`blade_alerts.json`** — written each run. Contains:
-   - `dms[]` — one entry per signaled prospect: `{to, owner_id, prospect, priority, text}`. `to` is the Slack handle of the contact owner (or `@francisco` fallback for unowned contacts).
-   - `digest` — `{channel, text}` for the `#sales-signals` summary post.
+   - `alerts[]` — one entry per signaled prospect: `{owner_id, prospect, priority, text}`. `owner_id` is the HubSpot owner ID (or `null` for unowned contacts); the agent maps it to whatever destination it uses.
+   - `digest` — pre-rendered digest text summarizing the run.
    - `run_at` — UTC timestamp.
 2. **`blade_state.json`** — dedup state. Same signal set won't re-fire next run; signal-set changes do trigger a re-alert.
 
-The OpenClaw agent reads `blade_alerts.json` and posts the messages.
+The OpenClaw agent reads `blade_alerts.json` and handles delivery.
 
 ## Setup
 
@@ -38,12 +39,8 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Edit `blade.py`:
-
-- `OWNER_TO_SLACK` — HubSpot owner ID → Slack handle (already populated).
-- `FALLBACK_SLACK_HANDLE` — handle used when a contact has no mapped owner.
-- `DIGEST_CHANNEL` — channel for the digest post.
-- Column-name constants at the top, if your Clay table headers differ.
+If your Clay table uses different column headers, edit the `COL_*` constants
+at the top of `blade.py`.
 
 Environment variables (only needed when pulling from Clay; not needed for `--csv`):
 

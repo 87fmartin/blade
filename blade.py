@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""blade.py — Detect buying signals in a Clay table and emit Slack alerts.
+"""blade.py — Detect buying signals in a Clay table and emit alert drafts.
 
 Reads sales prospects, fires signals on job changes/promotions and hiring sprees,
-and writes a JSON file of draft DMs (per contact owner) plus a channel digest
-for an external Slack-posting agent (e.g. OpenClaw) to deliver. Dedupes via a
-local JSON state file so the same signal does not re-fire next run.
+and writes a JSON file of per-owner alert drafts plus a digest summary for an
+external alerting agent (e.g. OpenClaw) to deliver. Delivery routing — Slack
+handles, channels, etc. — lives in the agent, not here. Dedupes via a local
+JSON state file so the same signal does not re-fire next run.
 """
 
 from __future__ import annotations
@@ -32,20 +33,6 @@ COL_LINKEDIN = "LinkedIn URL"
 COL_JOB_CHANGE = "Promotion or Job Change"
 COL_JOB_OPENINGS = "Job Openings"
 COL_OWNER_ID = "HubSpot Owner ID"
-
-# === HubSpot owner ID → Slack handle. ===
-OWNER_TO_SLACK: dict[str, str] = {
-    "11721652": "@debbiemadden",
-    "38820196": "@Eric Schoenfeld",
-    "79141253": "@Phil",
-    "99472939": "@francisco",
-}
-
-# Slack handle for unowned contacts.
-FALLBACK_SLACK_HANDLE = "@francisco"
-
-# Slack channel for the digest message.
-DIGEST_CHANNEL = "#sales-signals"
 
 HIRING_SPREE_MIN = 5
 STATE_FILE = Path("blade_state.json")
@@ -195,10 +182,6 @@ def record_alert(p: Prospect, state: dict) -> None:
     }
 
 
-def resolve_slack_handle(owner_id: str) -> str:
-    return OWNER_TO_SLACK.get(owner_id, FALLBACK_SLACK_HANDLE)
-
-
 def format_signal_lines(p: Prospect) -> list[str]:
     parts = []
     if "promotion" in p.signals:
@@ -210,7 +193,7 @@ def format_signal_lines(p: Prospect) -> list[str]:
     return parts
 
 
-def build_dm(p: Prospect) -> str:
+def build_alert_text(p: Prospect) -> str:
     lines = [
         f"*Buying signal — Priority {p.priority}*",
         f"*{p.full_name}* — {p.title} @ {p.org}",
@@ -250,30 +233,26 @@ def build_digest(prospects: list[Prospect]) -> str:
 
 
 def build_alerts_payload(to_alert: list[Prospect]) -> dict:
-    dms = []
+    alerts = []
     for p in to_alert:
-        dms.append({
-            "to": resolve_slack_handle(p.owner_id),
+        alerts.append({
             "owner_id": p.owner_id or None,
             "prospect": p.full_name,
             "priority": p.priority,
-            "text": build_dm(p),
+            "text": build_alert_text(p),
         })
     payload: dict = {
         "run_at": datetime.now(timezone.utc).isoformat(),
-        "dms": dms,
+        "alerts": alerts,
     }
     if to_alert:
-        payload["digest"] = {
-            "channel": DIGEST_CHANNEL,
-            "text": build_digest(to_alert),
-        }
+        payload["digest"] = build_digest(to_alert)
     return payload
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Detect buying signals and emit Slack alert drafts as JSON."
+        description="Detect buying signals and emit alert drafts as JSON."
     )
     ap.add_argument("--csv", help="Read from a local CSV instead of the Clay API")
     ap.add_argument(
@@ -329,19 +308,19 @@ def main() -> None:
     payload = build_alerts_payload(to_alert)
 
     if args.dry_run:
-        for dm in payload["dms"]:
-            print(f"\n--- DM → {dm['to']} (owner={dm['owner_id'] or 'unowned'}) ---")
-            print(dm["text"])
+        for alert in payload["alerts"]:
+            print(f"\n--- alert (owner={alert['owner_id'] or 'unowned'}) ---")
+            print(alert["text"])
         if "digest" in payload:
-            print(f"\n--- DIGEST → {payload['digest']['channel']} ---")
-            print(payload["digest"]["text"])
+            print("\n--- DIGEST ---")
+            print(payload["digest"])
         return
 
     with ALERTS_OUT_FILE.open("w") as f:
         json.dump(payload, f, indent=2)
-    n_dms = len(payload["dms"])
+    n_alerts = len(payload["alerts"])
     suffix = " + digest" if "digest" in payload else ""
-    print(f"wrote {n_dms} DM(s){suffix} to {ALERTS_OUT_FILE}")
+    print(f"wrote {n_alerts} alert(s){suffix} to {ALERTS_OUT_FILE}")
 
     for p in to_alert:
         record_alert(p, state)
