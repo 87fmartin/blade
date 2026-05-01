@@ -1,0 +1,17 @@
+# Prospect data and run artifacts
+*.csv
+blade_state.json
+blade_alerts.json
+
+# Credentials
+service-account.json
+*.key.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store
