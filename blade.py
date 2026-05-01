@@ -36,8 +36,13 @@ COL_JOB_OPENINGS = "Job Openings"
 COL_OWNER_ID = "HubSpot Owner ID"
 
 HIRING_SPREE_MIN = 5
-STATE_FILE = Path("blade_state.json")
-ALERTS_OUT_FILE = Path("blade_alerts.json")
+
+# State and output files always live next to blade.py, regardless of the caller's
+# CWD. Avoids the agent-runs-from-workspace-root vs script-runs-from-repo-dir
+# split that lets the dedup file end up in two different places.
+_SCRIPT_DIR = Path(__file__).resolve().parent
+STATE_FILE = _SCRIPT_DIR / "blade_state.json"
+ALERTS_OUT_FILE = _SCRIPT_DIR / "blade_alerts.json"
 
 
 @dataclass
