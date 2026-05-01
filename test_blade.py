@@ -14,6 +14,7 @@ from blade import (
     build_alert_text,
     build_alerts_payload,
     build_digest,
+    format_signal_lines,
     record_alert,
     should_alert,
     state_key,
@@ -28,8 +29,9 @@ def make(
     change="",
     openings=0,
     owner="",
+    email="",
 ):
-    return Prospect(name, title, org, linkedin, change, openings, owner)
+    return Prospect(name, title, org, linkedin, change, openings, owner, email)
 
 
 # ---------- signal detection + priority ----------
@@ -110,6 +112,7 @@ class TestParseRows:
                     "Title": "VP Eng",
                     "Org": "Acme",
                     "LinkedIn URL": "linkedin.com/in/alice",
+                    "Work Email": "alice@acme.com",
                     "Promotion or Job Change": "Promotion",
                     "Job Openings": "12",
                     "HubSpot Owner ID": "111",
@@ -120,9 +123,14 @@ class TestParseRows:
         assert p.title == "VP Eng"
         assert p.org == "Acme"
         assert p.linkedin == "https://linkedin.com/in/alice"
+        assert p.email == "alice@acme.com"
         assert p.job_change_raw == "Promotion"
         assert p.job_openings == 12
         assert p.owner_id == "111"
+
+    def test_missing_email_becomes_empty(self):
+        [p] = _parse_rows([{}])
+        assert p.email == ""
 
     def test_blank_openings_becomes_zero(self):
         [p] = _parse_rows([{"Job Openings": ""}])
@@ -216,28 +224,58 @@ class TestBuildAlertText:
             title="VP Eng",
             org="Acme",
             linkedin="https://l/alice",
+            email="alice@acme.com",
             change="Promotion",
             openings=10,
         )
         msg = build_alert_text(p)
         assert "Priority 1" in msg
-        assert "Alice" in msg
+        assert "Job Change/Promotion + Hiring Spree" in msg
+        assert "<https://l/alice|Alice>" in msg
         assert "VP Eng" in msg
         assert "Acme" in msg
+        assert "alice@acme.com" in msg
         assert "Promotion" in msg
         assert "Hiring spree" in msg
         assert "10 open" in msg
-        assert "https://l/alice" in msg
+        assert "less than 90 days ago" in msg
 
-    def test_distinguishes_promotion_vs_job_change_in_text(self):
-        promo = build_alert_text(make(change="Promotion"))
-        change = build_alert_text(make(change="Job Change"))
-        assert "Promotion" in promo and "Job change" not in promo
-        assert "Job change" in change and "Promotion" not in change
+    def test_headline_per_priority(self):
+        # P1: both signals
+        p1 = build_alert_text(make(change="Promotion", openings=10))
+        assert "Job Change/Promotion + Hiring Spree (Priority 1)" in p1
+        # P2: change only
+        p2 = build_alert_text(make(change="Job Change"))
+        assert "Job Change/Promotion Only (Priority 2)" in p2
+        # P3: hiring only
+        p3 = build_alert_text(make(openings=8))
+        assert "Hiring Spree Only (Priority 3)" in p3
 
-    def test_omits_linkedin_line_when_missing(self):
+    def test_distinguishes_promotion_vs_job_change_in_body(self):
+        # Headline contains both terms now; check the body lines directly.
+        promo_lines = format_signal_lines(make(change="Promotion"))
+        change_lines = format_signal_lines(make(change="Job Change"))
+        assert any(line.startswith("Promotion —") for line in promo_lines)
+        assert not any(line.startswith("Job Change —") for line in promo_lines)
+        assert any(line.startswith("Job Change —") for line in change_lines)
+        assert not any(line.startswith("Promotion —") for line in change_lines)
+
+    def test_links_name_to_linkedin_when_present(self):
+        msg = build_alert_text(make(linkedin="https://l/alice", change="Promotion"))
+        assert "<https://l/alice|Alice>" in msg
+
+    def test_no_link_when_linkedin_missing(self):
         msg = build_alert_text(make(linkedin="", change="Promotion"))
-        assert "LinkedIn" not in msg
+        # Plain name, no Slack link wrapper
+        assert "<http" not in msg
+        assert "Alice" in msg
+
+    def test_omits_email_line_when_missing(self):
+        without = build_alert_text(make(email="", change="Promotion"))
+        with_email = build_alert_text(make(email="alice@acme.com", change="Promotion"))
+        # Email line is one extra newline-separated line
+        assert with_email.count("\n") == without.count("\n") + 1
+        assert "alice@acme.com" not in without
 
 
 class TestBuildDigest:
@@ -248,12 +286,15 @@ class TestBuildDigest:
             make(name="Charlie", linkedin="https://l/c", change="Job Change"),
         ]
         d = build_digest(prospects)
-        assert "Priority 1" in d
-        assert "Priority 2" in d
-        assert "Priority 3" in d
+        # Priority headlines match the per-alert format for consistency.
+        assert "Job Change/Promotion + Hiring Spree (Priority 1)" in d
+        assert "Job Change/Promotion Only (Priority 2)" in d
+        assert "Hiring Spree Only (Priority 3)" in d
         assert "3 signals fired" in d
         for name in ("Alpha", "Bravo", "Charlie"):
             assert d.count(name) == 1
+        # Names link to LinkedIn in the digest too
+        assert "<https://l/a|Alpha>" in d
 
     def test_omits_empty_tiers(self):
         prospects = [make(change="Promotion")]  # only P2

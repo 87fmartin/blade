@@ -30,6 +30,7 @@ COL_FULL_NAME = "Full Name"
 COL_TITLE = "Title"
 COL_ORG = "Org"
 COL_LINKEDIN = "LinkedIn URL"
+COL_WORK_EMAIL = "Work Email"
 COL_JOB_CHANGE = "Promotion or Job Change"
 COL_JOB_OPENINGS = "Job Openings"
 COL_OWNER_ID = "HubSpot Owner ID"
@@ -48,6 +49,7 @@ class Prospect:
     job_change_raw: str
     job_openings: int
     owner_id: str
+    email: str = ""
 
     @property
     def signals(self) -> list[str]:
@@ -149,6 +151,7 @@ def _parse_rows(rows: Iterable[dict]) -> list[Prospect]:
                 job_change_raw=str(row.get(COL_JOB_CHANGE, "")).strip(),
                 job_openings=openings,
                 owner_id=str(row.get(COL_OWNER_ID, "")).strip(),
+                email=str(row.get(COL_WORK_EMAIL, "")).strip(),
             )
         )
     return out
@@ -184,28 +187,43 @@ def record_alert(p: Prospect, state: dict) -> None:
     }
 
 
+PRIORITY_HEADLINES = {
+    1: "Job Change/Promotion + Hiring Spree (Priority 1)",
+    2: "Job Change/Promotion Only (Priority 2)",
+    3: "Hiring Spree Only (Priority 3)",
+}
+
+
 def format_signal_lines(p: Prospect) -> list[str]:
     parts = []
     if "promotion" in p.signals:
-        parts.append(f"Promotion — now {p.title} at {p.org}")
+        parts.append(
+            f"Promotion — now {p.title} at {p.org} (less than 90 days ago)"
+        )
     if "job_change" in p.signals:
-        parts.append(f"Job change — now {p.title} at {p.org}")
+        parts.append(
+            f"Job Change — now {p.title} at {p.org} (less than 90 days ago)"
+        )
     if "hiring_spree" in p.signals:
         parts.append(f"Hiring spree — {p.job_openings} open AI/engineering roles")
     return parts
 
 
+def _name_md(p: Prospect) -> str:
+    """Slack-flavored link wrapping the name when LinkedIn is available."""
+    return f"<{p.linkedin}|{p.full_name}>" if p.linkedin else p.full_name
+
+
 def build_alert_text(p: Prospect) -> str:
     lines = [
-        f"*Buying signal — Priority {p.priority}*",
-        f"*{p.full_name}* — {p.title} @ {p.org}",
-        "",
-        "Signals:",
+        f"*{PRIORITY_HEADLINES[p.priority]}*",
+        f"*{_name_md(p)}* — {p.title} @ {p.org}",
     ]
+    if p.email:
+        lines.append(p.email)
+    lines.append("")
+    lines.append("Signals:")
     lines.extend(f"  • {s}" for s in format_signal_lines(p))
-    if p.linkedin:
-        lines.append("")
-        lines.append(f"LinkedIn: {p.linkedin}")
     return "\n".join(lines)
 
 
@@ -215,21 +233,15 @@ def build_digest(prospects: list[Prospect]) -> str:
         if p.priority:
             by_priority[p.priority].append(p)
     total = sum(len(v) for v in by_priority.values())
-    titles = {
-        1: "Priority 1 — job change/promotion + hiring spree",
-        2: "Priority 2 — job change/promotion",
-        3: "Priority 3 — hiring spree",
-    }
     lines = [f"*Blade run — {total} signal{'s' if total != 1 else ''} fired*", ""]
     for prio in (1, 2, 3):
         items = by_priority[prio]
         if not items:
             continue
-        lines.append(f"*{titles[prio]} ({len(items)})*")
+        lines.append(f"*{PRIORITY_HEADLINES[prio]} — {len(items)}*")
         for p in items:
             sigs = ", ".join(p.signals)
-            link = f" — {p.linkedin}" if p.linkedin else ""
-            lines.append(f"  • {p.full_name} — {p.title} @ {p.org} [{sigs}]{link}")
+            lines.append(f"  • {_name_md(p)} — {p.title} @ {p.org} [{sigs}]")
         lines.append("")
     return "\n".join(lines).rstrip()
 

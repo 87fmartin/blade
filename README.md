@@ -93,12 +93,15 @@ python blade.py --csv table.csv --reset-state
 The CSV must have these headers (rename the constants in `blade.py` to remap):
 
 ```
-Full Name,Title,Org,LinkedIn URL,Promotion or Job Change,Job Openings,HubSpot Owner ID
+Full Name,Title,Org,LinkedIn URL,Work Email,Promotion or Job Change,Job Openings,HubSpot Owner ID
 ```
 
 `Promotion or Job Change` should contain `Promotion` or `Job Change`
 (case-insensitive) when the person changed roles, empty otherwise.
 `Job Openings` should be an integer; non-numeric values are treated as 0.
+`LinkedIn URL` and `Work Email` are both optional — when present they're
+embedded in the alert text (LinkedIn as a clickable link on the prospect's
+name, email as a separate line beneath).
 
 ## Google Workspace access (for OpenClaw)
 
