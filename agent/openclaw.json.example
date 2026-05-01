@@ -1,0 +1,23 @@
+// Slack channel config. Merge into ~/.openclaw/openclaw.json (it's JSON5).
+// Replace placeholders:
+//   C__SALES_SIGNALS_ID__   — Slack channel ID for #sales-signals
+//                             (right-click the channel in Slack → Copy link;
+//                              the C... at the end is the ID)
+//   U__FRANCISCO_ID__       — your Slack user ID (Profile → ⋯ → Copy member ID)
+{
+  channels: {
+    slack: {
+      enabled: true,
+      mode: "socket",
+      botToken: { source: "env", provider: "default", id: "SLACK_BOT_TOKEN" },
+      appToken: { source: "env", provider: "default", id: "SLACK_APP_TOKEN" },
+      groupPolicy: "allowlist",
+      channels: {
+        // Allow the agent to post to #sales-signals.
+        "C__SALES_SIGNALS_ID__": { allow: true },
+      },
+      // Only Francisco can issue commands / approvals to this agent.
+      allowFrom: ["U__FRANCISCO_ID__"],
+    },
+  },
+}
