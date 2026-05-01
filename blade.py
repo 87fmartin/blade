@@ -13,6 +13,8 @@ import argparse
 import csv
 import json
 import os
+import shutil
+import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -107,6 +109,31 @@ def load_clay(api_key: str, table_id: str) -> list[Prospect]:
     if not isinstance(rows, list):
         raise RuntimeError(f"unexpected Clay payload shape: {type(rows)}")
     return _parse_rows(rows)
+
+
+def load_gsheet(spreadsheet_id: str, range_str: str = "Sheet1") -> list[Prospect]:
+    """Fetch rows from a Google Sheet via the `gws` CLI.
+
+    Auth comes from GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE (set by setup-gws.sh).
+    The first row of `range_str` is treated as the header row.
+    """
+    if shutil.which("gws") is None:
+        raise RuntimeError("gws not on PATH — run setup-gws.sh on this host first")
+    params = json.dumps({"spreadsheetId": spreadsheet_id, "range": range_str})
+    result = subprocess.run(
+        ["gws", "sheets", "spreadsheets", "values", "get", "--params", params],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"gws failed ({result.returncode}): {result.stderr.strip()}")
+    payload = json.loads(result.stdout)
+    values = payload.get("values") or []
+    if len(values) < 2:
+        return []
+    headers, *rows = values
+    dicts = [dict(zip(headers, row)) for row in rows]
+    return _parse_rows(dicts)
 
 
 def _normalize_linkedin(url: str) -> str:
@@ -250,6 +277,15 @@ def main() -> None:
     )
     ap.add_argument("--csv", help="Read from a local CSV instead of the Clay API")
     ap.add_argument(
+        "--sheet",
+        help="Read from a Google Sheet by ID (via gws). Falls back to $CLAY_SHEET_ID.",
+    )
+    ap.add_argument(
+        "--sheet-range",
+        default=os.environ.get("CLAY_SHEET_RANGE", "Sheet1"),
+        help="A1 range to read from the sheet (default: Sheet1, or $CLAY_SHEET_RANGE)",
+    )
+    ap.add_argument(
         "--dry-run",
         action="store_true",
         help="Print alerts to stdout; don't write JSON or update state",
@@ -265,13 +301,19 @@ def main() -> None:
         STATE_FILE.unlink()
         print(f"cleared {STATE_FILE}")
 
+    sheet_id = args.sheet or os.environ.get("CLAY_SHEET_ID")
     if args.csv:
         prospects = load_csv(Path(args.csv))
+    elif sheet_id:
+        prospects = load_gsheet(sheet_id, args.sheet_range)
     else:
         api_key = os.environ.get("CLAY_API_KEY")
         table_id = os.environ.get("CLAY_TABLE_ID")
         if not (api_key and table_id):
-            sys.exit("CLAY_API_KEY and CLAY_TABLE_ID must be set (or use --csv)")
+            sys.exit(
+                "no source configured — pass --csv, --sheet, or set "
+                "CLAY_SHEET_ID, or CLAY_API_KEY + CLAY_TABLE_ID"
+            )
         prospects = load_clay(api_key, table_id)
 
     signaled = [p for p in prospects if p.priority is not None]
