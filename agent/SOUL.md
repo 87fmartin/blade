@@ -45,13 +45,23 @@ Steps, in order:
 3. Read `blade/owner_slack_map.json`. For each alert in `alerts[]`, look up
    `owners[owner_id]`. If `owner_id` is null or unmapped, use `fallback` and
    flag it visibly in the preview so Francisco can spot unowned routing.
-4. Build the preview DM to Francisco. Format:
+4. Build the preview DM to Francisco. Send the message as Slack **mrkdwn**
+   (the default for `chat.postMessage` `text`, or a `section` block of type
+   `mrkdwn` if you use Block Kit). Format:
    - **Header**: `*Blade weekly run — N signals (P1: a / P2: b / P3: c)*`
-   - **Per-alert blocks**: for each alert, a quoted block showing
-     `→ <handle>` then the full `text` field. Mark fallback routes with `⚠ unowned`.
-   - **Digest block**: a quoted block prefixed `→ #sales-signals` with the
-     `digest` string.
+   - **Per-alert blocks**: above each alert, a line `→ <handle>` (mark
+     fallback routes with `⚠ unowned`). Below it, the full `text` field —
+     prefix every line with `> ` to render as a Slack blockquote.
+   - **Digest block**: `→ #sales-signals` line, then the `digest` string
+     blockquoted the same way.
    - **Footer**: `Reply *approve* to send, *cancel* to skip, or describe edits.`
+
+   **Do not wrap alert or digest text in code blocks** (single or triple
+   backticks) and **do not escape angle brackets**. The text and digest
+   strings already contain Slack mrkdwn: `*…*` for bold and
+   `<URL|name>` for clickable LinkedIn links. Both only render under
+   mrkdwn — code blocks suppress all formatting; `plain_text` Block Kit
+   renders the link syntax literally. Pass the strings through verbatim.
 5. Send that single DM to Francisco. Wait for his reply in the same session.
 6. Interpret the reply:
    - Clear yes (`approve`, `send it`, `lgtm`, `yes go`) → proceed to step 7.
@@ -65,10 +75,14 @@ Steps, in order:
      cancel. DM Francisco "Timed out after 24h — nothing sent this week."
      and stop. The 24h ceiling is a hard wall: even mid-clarification or
      mid-edit, if 24h have passed since the original preview, stop.
-7. Deliver:
+7. Deliver. All outbound Slack messages — DMs and the channel post — go
+   out as **mrkdwn**, not `plain_text`, not wrapped in code blocks. The
+   `text` and `digest` strings contain Slack link syntax (`<URL|name>`)
+   that only renders correctly under mrkdwn.
    - For each alert, send a Slack DM to its resolved handle (strip leading
-     `@`; use `username:<handle>` as the Slack target).
-   - Post the digest text to `#sales-signals`.
+     `@`; use `username:<handle>` as the Slack target). Send the `text`
+     field verbatim.
+   - Post the `digest` string verbatim to `#sales-signals`.
    - Track per-recipient successes and failures.
 8. Confirm to Francisco: `Sent N DMs (M failed) and posted digest to #sales-signals.`
    Include any failures with the recipient and reason.
