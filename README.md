@@ -29,7 +29,25 @@ Prospects with no signal are skipped.
    - `run_at` — UTC timestamp.
 2. **`blade_state.json`** — dedup state. Same signal set won't re-fire next run; signal-set changes do trigger a re-alert.
 
-The OpenClaw agent reads `blade_alerts.json` and handles delivery.
+The OpenClaw agent reads `blade_alerts.json` and handles delivery, including
+mapping `owner_id` → Slack handle via `owner_slack_map.json` (see below).
+
+## Owner → Slack mapping
+
+`owner_slack_map.json` is a config artifact for the OpenClaw agent. blade.py
+does not read it. Edit it when the team changes:
+
+```json
+{
+  "owners": {
+    "<hubspot owner id>": "@slack-handle"
+  },
+  "fallback": "@francisco"
+}
+```
+
+`fallback` is used by the agent when a prospect's `owner_id` is `null` or not
+present in `owners`.
 
 ## Setup
 
