@@ -40,8 +40,18 @@ Steps, in order:
 
 1. Run `.venv/bin/python blade.py`. On non-zero exit, DM Francisco
    the stderr output and stop — do not retry.
-2. Read `blade_alerts.json`. If `alerts` is empty, DM Francisco
-   "No buying signals this week." and stop.
+2. Read `blade_alerts.json`. Compute the gap between `sheet_last_modified`
+   and `run_at`; if greater than **24 hours**, the source data is stale
+   (Clay likely didn't refresh the sheet). Branch on alerts + staleness:
+   - `alerts` empty AND fresh → DM Francisco "No buying signals this week."
+     and stop.
+   - `alerts` empty AND stale → DM Francisco "⚠️ Stale data — sheet last
+     modified Nh ago, exceeding the 24h freshness window. Clay may not have
+     refreshed; no alerts to surface, but absence may be a false negative."
+     Stop. Do not deliver anything.
+   - `alerts` non-empty → continue. If stale, prepend a warning line to the
+     preview header in step 4: "⚠️ Stale data — sheet last modified Nh ago.
+     Review carefully before approving." If fresh, no warning.
 3. Read `owner_slack_map.json`. For each alert in `alerts[]`, look up
    `owners[owner_id]`. If `owner_id` is null or unmapped, use `fallback` and
    flag it visibly in the preview so Francisco can spot unowned routing.

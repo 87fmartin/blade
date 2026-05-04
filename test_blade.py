@@ -334,6 +334,16 @@ class TestBuildAlertsPayload:
         payload = build_alerts_payload([make(change="Promotion")])
         json.dumps(payload)
 
+    def test_includes_sheet_last_modified_when_provided(self):
+        from datetime import datetime, timezone
+        mtime = datetime(2026, 5, 4, 10, 0, 0, tzinfo=timezone.utc)
+        payload = build_alerts_payload([make(change="Promotion")], sheet_modified_at=mtime)
+        assert payload["sheet_last_modified"] == "2026-05-04T10:00:00+00:00"
+
+    def test_omits_sheet_last_modified_when_not_provided(self):
+        payload = build_alerts_payload([make(change="Promotion")])
+        assert "sheet_last_modified" not in payload
+
 
 # ---------- end-to-end ----------
 

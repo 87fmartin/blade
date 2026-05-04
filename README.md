@@ -26,6 +26,7 @@ Prospects with no signal are skipped.
 1. **`blade_alerts.json`** — written each run. Contains:
    - `alerts[]` — one entry per signaled prospect: `{owner_id, prospect, priority, text}`. `owner_id` is the HubSpot owner ID (or `null` for unowned contacts); the agent maps it to whatever destination it uses.
    - `digest` — pre-rendered digest text summarizing the run.
+   - `sheet_last_modified` — UTC timestamp of the source Sheet's last edit, fetched via the Drive API. Only present when the data source is a Google Sheet. The agent uses this to decide whether the data is stale (24h threshold) and warn the user.
    - `run_at` — UTC timestamp.
 2. **`blade_state.json`** — dedup state. Same signal set won't re-fire next run; signal-set changes do trigger a re-alert.
 

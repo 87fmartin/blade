@@ -106,6 +106,18 @@ def load_clay(api_key: str, table_id: str) -> list[Prospect]:
 
 
 SHEETS_READONLY_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly"
+DRIVE_METADATA_READONLY_SCOPE = "https://www.googleapis.com/auth/drive.metadata.readonly"
+
+
+def get_sheet_modified_time(spreadsheet_id: str, creds_path: str) -> datetime:
+    """Return the Drive file's last-modified time as a timezone-aware UTC datetime."""
+    creds = service_account.Credentials.from_service_account_file(
+        creds_path, scopes=[DRIVE_METADATA_READONLY_SCOPE]
+    )
+    service = build("drive", "v3", credentials=creds, cache_discovery=False)
+    result = service.files().get(fileId=spreadsheet_id, fields="modifiedTime").execute()
+    raw = result["modifiedTime"].replace("Z", "+00:00")
+    return datetime.fromisoformat(raw)
 
 
 def load_gsheet(spreadsheet_id: str, range_str: str, creds_path: str) -> list[Prospect]:
@@ -251,7 +263,10 @@ def build_digest(prospects: list[Prospect]) -> str:
     return "\n".join(lines).rstrip()
 
 
-def build_alerts_payload(to_alert: list[Prospect]) -> dict:
+def build_alerts_payload(
+    to_alert: list[Prospect],
+    sheet_modified_at: datetime | None = None,
+) -> dict:
     alerts = []
     for p in to_alert:
         alerts.append({
@@ -264,6 +279,8 @@ def build_alerts_payload(to_alert: list[Prospect]) -> dict:
         "run_at": datetime.now(timezone.utc).isoformat(),
         "alerts": alerts,
     }
+    if sheet_modified_at is not None:
+        payload["sheet_last_modified"] = sheet_modified_at.isoformat()
     if to_alert:
         payload["digest"] = build_digest(to_alert)
     return payload
@@ -300,6 +317,7 @@ def main() -> None:
         print(f"cleared {STATE_FILE}")
 
     sheet_id = args.sheet or os.environ.get("CLAY_SHEET_ID")
+    sheet_modified_at: datetime | None = None
     if args.csv:
         prospects = load_csv(Path(args.csv))
     elif sheet_id:
@@ -311,6 +329,7 @@ def main() -> None:
                 "set GOOGLE_APPLICATION_CREDENTIALS to the service-account JSON path"
             )
         prospects = load_gsheet(sheet_id, args.sheet_range, creds_path)
+        sheet_modified_at = get_sheet_modified_time(sheet_id, creds_path)
     else:
         api_key = os.environ.get("CLAY_API_KEY")
         table_id = os.environ.get("CLAY_TABLE_ID")
@@ -331,9 +350,11 @@ def main() -> None:
         f"{len(to_alert)} new or changed since last run"
     )
 
-    payload = build_alerts_payload(to_alert)
+    payload = build_alerts_payload(to_alert, sheet_modified_at)
 
     if args.dry_run:
+        if "sheet_last_modified" in payload:
+            print(f"sheet last modified: {payload['sheet_last_modified']}")
         for alert in payload["alerts"]:
             print(f"\n--- alert (owner={alert['owner_id'] or 'unowned'}) ---")
             print(alert["text"])
