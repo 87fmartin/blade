@@ -30,8 +30,11 @@ def make(
     openings=0,
     owner="",
     email="",
+    description="",
 ):
-    return Prospect(name, title, org, linkedin, change, openings, owner, email)
+    return Prospect(
+        name, title, org, linkedin, change, openings, owner, email, description
+    )
 
 
 # ---------- signal detection + priority ----------
@@ -113,6 +116,7 @@ class TestParseRows:
                     "Org": "Acme",
                     "LinkedIn URL": "linkedin.com/in/alice",
                     "Work Email": "alice@acme.com",
+                    "Blade List Description": "infra rebuild candidate",
                     "Promotion or Job Change": "Promotion",
                     "Job Openings": "12",
                     "HubSpot Owner ID": "111",
@@ -124,6 +128,7 @@ class TestParseRows:
         assert p.org == "Acme"
         assert p.linkedin == "https://linkedin.com/in/alice"
         assert p.email == "alice@acme.com"
+        assert p.description == "infra rebuild candidate"
         assert p.job_change_raw == "Promotion"
         assert p.job_openings == 12
         assert p.owner_id == "111"
@@ -277,6 +282,17 @@ class TestBuildAlertText:
         assert with_email.count("\n") == without.count("\n") + 1
         assert "alice@acme.com" not in without
 
+    def test_appends_description_after_org_with_dash(self):
+        msg = build_alert_text(
+            make(change="Promotion", description="infra rebuild candidate")
+        )
+        assert "VP @ Acme - infra rebuild candidate" in msg
+
+    def test_omits_description_dash_when_missing(self):
+        msg = build_alert_text(make(change="Promotion", description=""))
+        assert "VP @ Acme" in msg
+        assert " - " not in msg.split("Signals:")[0]  # no dangling dash above signals
+
 
 class TestBuildDigest:
     def test_groups_by_priority(self):
@@ -302,6 +318,11 @@ class TestBuildDigest:
         assert "Priority 2" in d
         assert "Priority 1" not in d
         assert "Priority 3" not in d
+
+    def test_digest_includes_description_when_present(self):
+        prospects = [make(change="Promotion", description="infra rebuild candidate")]
+        d = build_digest(prospects)
+        assert "VP @ Acme - infra rebuild candidate" in d
 
 
 class TestBuildAlertsPayload:

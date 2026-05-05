@@ -31,6 +31,7 @@ COL_TITLE = "Title"
 COL_ORG = "Org"
 COL_LINKEDIN = "LinkedIn URL"
 COL_WORK_EMAIL = "Work Email"
+COL_BLADE_DESCRIPTION = "Blade List Description"
 COL_JOB_CHANGE = "Promotion or Job Change"
 COL_JOB_OPENINGS = "Job Openings"
 COL_OWNER_ID = "HubSpot Owner ID"
@@ -55,6 +56,7 @@ class Prospect:
     job_openings: int
     owner_id: str
     email: str = ""
+    description: str = ""
 
     @property
     def signals(self) -> list[str]:
@@ -169,6 +171,7 @@ def _parse_rows(rows: Iterable[dict]) -> list[Prospect]:
                 job_openings=openings,
                 owner_id=str(row.get(COL_OWNER_ID, "")).strip(),
                 email=str(row.get(COL_WORK_EMAIL, "")).strip(),
+                description=str(row.get(COL_BLADE_DESCRIPTION, "")).strip(),
             )
         )
     return out
@@ -231,10 +234,16 @@ def _name_md(p: Prospect) -> str:
     return f"<{p.linkedin}|{p.full_name}>" if p.linkedin else p.full_name
 
 
+def _title_org_line(p: Prospect) -> str:
+    """`Name — Title @ Org`, with ` - description` appended when present."""
+    base = f"*{_name_md(p)}* — {p.title} @ {p.org}"
+    return f"{base} - {p.description}" if p.description else base
+
+
 def build_alert_text(p: Prospect) -> str:
     lines = [
         f"*{PRIORITY_HEADLINES[p.priority]}*",
-        f"*{_name_md(p)}* — {p.title} @ {p.org}",
+        _title_org_line(p),
     ]
     if p.email:
         lines.append(p.email)
@@ -258,7 +267,8 @@ def build_digest(prospects: list[Prospect]) -> str:
         lines.append(f"*{PRIORITY_HEADLINES[prio]} — {len(items)}*")
         for p in items:
             sigs = ", ".join(p.signals)
-            lines.append(f"  • {_name_md(p)} — {p.title} @ {p.org} [{sigs}]")
+            tail = f" - {p.description}" if p.description else ""
+            lines.append(f"  • {_name_md(p)} — {p.title} @ {p.org}{tail} [{sigs}]")
         lines.append("")
     return "\n".join(lines).rstrip()
 
